@@ -35,45 +35,65 @@ function validateTaskInput(body, { partial = false } = {}) {
   return null;
 }
 
-router.post('/', (req, res) => {
-  const error = validateTaskInput(req.body);
-  if (error) {
-    return res.status(400).json({ error });
+router.post('/', async (req, res, next) => {
+  try {
+    const error = validateTaskInput(req.body);
+    if (error) {
+      return res.status(400).json({ error });
+    }
+    const task = await createTask(req.body);
+    res.status(201).json(task);
+  } catch (err) {
+    next(err);
   }
-  const task = createTask(req.body);
-  res.status(201).json(task);
 });
 
-router.get('/', (req, res) => {
-  res.json(listTasks());
+router.get('/', async (req, res, next) => {
+  try {
+    res.json(await listTasks());
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.get('/:id', (req, res) => {
-  const task = getTask(req.params.id);
-  if (!task) {
-    return res.status(404).json({ error: 'Tâche introuvable' });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const task = await getTask(req.params.id);
+    if (!task) {
+      return res.status(404).json({ error: 'Tâche introuvable' });
+    }
+    res.json(task);
+  } catch (err) {
+    next(err);
   }
-  res.json(task);
 });
 
-router.put('/:id', (req, res) => {
-  const error = validateTaskInput(req.body, { partial: true });
-  if (error) {
-    return res.status(400).json({ error });
+router.put('/:id', async (req, res, next) => {
+  try {
+    const error = validateTaskInput(req.body, { partial: true });
+    if (error) {
+      return res.status(400).json({ error });
+    }
+    const task = await updateTask(req.params.id, req.body);
+    if (!task) {
+      return res.status(404).json({ error: 'Tâche introuvable' });
+    }
+    res.json(task);
+  } catch (err) {
+    next(err);
   }
-  const task = updateTask(req.params.id, req.body);
-  if (!task) {
-    return res.status(404).json({ error: 'Tâche introuvable' });
-  }
-  res.json(task);
 });
 
-router.delete('/:id', (req, res) => {
-  const deleted = deleteTask(req.params.id);
-  if (!deleted) {
-    return res.status(404).json({ error: 'Tâche introuvable' });
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const deleted = await deleteTask(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Tâche introuvable' });
+    }
+    res.status(204).end();
+  } catch (err) {
+    next(err);
   }
-  res.status(204).end();
 });
 
 module.exports = router;
