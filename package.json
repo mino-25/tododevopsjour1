@@ -21,6 +21,8 @@
   },
   "homepage": "https://github.com/mino-25/tododevopsjour1#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0"
   }
 }
