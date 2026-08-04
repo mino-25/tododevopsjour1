@@ -1,0 +1,62 @@
+body {
+  font-family: sans-serif;
+  font-size: 1.5rem;
+}
+
+h1 {
+  font-family: fantasy;
+  text-align: center;
+}
+
+#container {
+  margin: 5rem;
+  flex-direction: column;
+}
+
+.flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 2rem;
+}
+
+.catchphrase {
+  margin: 1rem 0 3rem;
+  text-align: center;
+}
+
+.number {
+  margin: 1rem 0 3rem;
+  text-align: center;
+  background-color: blanchedalmond;
+  width: 8rem;
+  height: 8rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 25%;
+  font-size: 3rem;
+  font-weight: bold;
+}
+
+button {
+  background-color: aquamarine;
+  border: none;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 1.5rem;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+button:hover {
+  scale: 1.1;
+}
+
+button:disabled {
+  background-color: lightgray;
+  cursor: not-allowed;
+  scale: 1;
+}
