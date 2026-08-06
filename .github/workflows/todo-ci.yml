@@ -73,7 +73,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ secrets.DOCKERHUB_USER }}/todo-api:${{ github.sha }}
 
-  deploy:
+  deploy-vm:
     needs: [build]
     runs-on: self-hosted
     if: github.ref == 'refs/heads/jour3' || github.ref == 'refs/heads/main'
@@ -96,3 +96,14 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new -p "${{ secrets.DEPLOY_PORT }}" \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "for i in \$(seq 1 15); do curl -sf http://localhost:3000/health && exit 0; sleep 2; done; exit 1"
+
+  deploy-k8s:
+    needs: [build]
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/jour4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mettre a jour l'image du Deployment
+        run: kubectl set image deployment/todo-api todo-api=${{ secrets.DOCKERHUB_USER }}/todo-api:${{ github.sha }} -n todo
+      - name: Attendre la convergence du rollout
+        run: kubectl rollout status deployment/todo-api -n todo --timeout=120s
