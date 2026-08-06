@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: todo-api
-          image: minoo25/todo-api:85dc56702f56af792044b4e8d7c656d1e8f6d93d
+          image: minoo25/todo-api:db5a5ccfa5b7243e9500c261a7c0ebb89d191a9a
           ports:
             - containerPort: 3000
           envFrom:
