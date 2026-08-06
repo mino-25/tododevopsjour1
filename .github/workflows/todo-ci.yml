@@ -95,4 +95,4 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=accept-new -p "${{ secrets.DEPLOY_PORT }}" \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "for i in $(seq 1 15); do curl -sf http://localhost:3000/health && exit 0; sleep 2; done; exit 1"
+            "for i in \$(seq 1 15); do curl -sf http://localhost:3000/health && exit 0; sleep 2; done; exit 1"
