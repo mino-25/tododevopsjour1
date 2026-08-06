@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(metricsMiddleware);
 
 app.get('/health', (req, res) => {
-  res.status(500).json({ status: 'regression volontaire Jour 4' });
+  res.json({ status: 'ok', timestamp: new Date() });
 });
 
 app.get('/metrics', async (req, res) => {
