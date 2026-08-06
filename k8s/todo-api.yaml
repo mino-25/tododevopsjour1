@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: todo-api
-          image: minoo25/todo-api:3a60e2a5c5bf716bc0685a2402868232038266d3
+          image: minoo25/todo-api:85dc56702f56af792044b4e8d7c656d1e8f6d93d
           ports:
             - containerPort: 3000
           envFrom:
@@ -40,12 +40,15 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
           resources:
+            # Valeurs mesurees (Phase 12) : usage reel au repos ~17-19Mi,
+            # OOMKilled confirme et reproductible a 16-20Mi sous charge.
+            # 32Mi/64Mi valide sans aucune requete perdue sous charge.sh.
             requests:
               cpu: "100m"
-              memory: "64Mi"
+              memory: "32Mi"
             limits:
               cpu: "250m"
-              memory: "128Mi"
+              memory: "64Mi"
 ---
 apiVersion: v1
 kind: Service

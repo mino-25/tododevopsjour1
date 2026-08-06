@@ -197,3 +197,84 @@ Le runner self-hosted (`todo-local-runner`) tourne en tâche de fond sur la
 machine de développement (`~/actions-runner-todo/run.sh`), la machine cible
 `vm-prod` tourne en conteneur Docker persistant (volume `vm-prod-data`) :
 les deux doivent être en marche pour que le job `deploy` s'exécute.
+
+## Journal de bord — Jour 4 (Kubernetes)
+
+**Cluster et déploiement (Phases 1-5).** `k3d` crée `todo-cluster`
+(port 8080 mappé sur le loadbalancer intégré), namespace `todo`. Manifestes
+dans `k8s/` : Deployment/Service pour l'API, PVC+Deployment+Service pour
+Postgres, ConfigMap/Secret pour la config, Ingress Traefik sur
+`todo.localhost`. Vérifié en réel : CRUD complet à travers l'Ingress,
+suppression d'un pod API qui revient seul en 3s, suppression du pod Postgres
+qui revient avec les données intactes (la tâche créée avant est toujours
+là). Le job `deploy-k8s` (`kubectl set image` + `kubectl rollout status
+--timeout=120s`) remplace le job SSH du Jour 3 sur cette branche ; les deux
+coexistent dans le même workflow, chacun gardé par sa propre branche.
+
+**3 replicas et charge (Phase 6).** `scripts/charge.sh` envoie du trafic
+continu via l'Ingress. Vérifié pod par pod via `/metrics` : exactement
+35/35/35 requêtes sur les trois pods pour 105 requêtes envoyées — preuve que
+le Service répartit vraiment, pas qu'il existe trois pods.
+
+**Sondes (Phase 7).** `readinessProbe`/`livenessProbe` sur `/health`,
+`periodSeconds: 5`. Aucun événement `Unhealthy` en fonctionnement normal.
+
+**Rolling update mesuré sous charge (Phase 8).** `maxSurge: 1`,
+`maxUnavailable: 0`. Un vrai déploiement (bump de version, image
+reconstruite et repoussée par la pipeline) lancé pendant que `charge.sh`
+tournait 90 secondes : **663 requêtes, 0 échec**. L'ancien ReplicaSet n'est
+jamais descendu sous 3 pods prêts avant que le nouveau ne le soit.
+
+**Retour arrière chronométré (Phase 9).** Une régression volontaire sur
+`/health` (500 au lieu de 200) poussée via la pipeline : le job `deploy-k8s`
+a **échoué proprement** après 120s de timeout sur `kubectl rollout status`
+— et le service n'a jamais cessé de répondre, parce que `maxUnavailable: 0`
+a gardé les 3 anciens pods sains actifs pendant que les nouveaux
+échouaient leur readiness probe indéfiniment. `kubectl rollout undo` :
+**0.34 seconde** jusqu'à convergence complète (l'ancien ReplicaSet n'avait
+jamais été supprimé).
+
+**Cinq pannes rejouées (Phase 10).** Voir le tableau complet dans
+`docs/PROCEDURE_DEPLOIEMENT.md`. Le résultat le plus intéressant : un
+`kill -9 1` envoyé depuis `kubectl exec` n'a aucun effet, parce que PID 1
+dans un namespace Linux est immunisé aux signaux non gérés reçus depuis
+l'intérieur du même namespace — y compris `SIGKILL` (`pid_namespaces(7)`).
+Dans les quatre autres cas (pod supprimé, tag inexistant, secret amputé,
+mémoire trop basse), `maxUnavailable: 0` a empêché toute coupure réelle du
+service pendant que le diagnostic se faisait.
+
+**Procédure, version cluster (Phase 11).** `docs/PROCEDURE_DEPLOIEMENT.md`
+mis à jour en place (pas dupliqué) : `kubectl rollout undo` remplace le
+redéploiement SSH, les cinq pannes ci-dessus remplacent
+`Permission denied`/`Connection timed out`, la ligne "relancer le service"
+a disparu — le cluster l'a déjà fait.
+
+**Tuning des ressources (Phase 12).** `kubectl top` : usage réel au repos
+~17-19Mi. Descente progressive de `limits.memory` sous charge continue :
+48Mi/32Mi/24Mi propres, **20Mi** a laissé passer 1 requête en échec sur 72,
+**16Mi** a produit un `OOMKilled` net et reproductible (exit code 137, deux
+pods touchés). Valeur retenue : `requests: 32Mi` / `limits: 64Mi`, validée
+ensuite par un nouveau passage de `charge.sh` : 102 requêtes, 0 échec.
+Piège rencontré pour de vrai en cours de route : un `kubectl apply -f`
+lancé après plusieurs `kubectl set image` manuels a fait régresser
+silencieusement l'image vers le tag resté écrit dans le fichier — exactement
+le *drift* décrit au chapitre 2 du cours, pas juste une notion théorique.
+
+| Panne | Se répare seule ? |
+|---|---|
+| Pod supprimé | Oui, ~3s |
+| Process tué (`kill -9 1` via exec) | Sans effet (immunité PID 1) |
+| Tag d'image inexistant | Non — `kubectl rollout undo` |
+| Clé de Secret supprimée | Non — restaurer la clé + `rollout restart` |
+| `limits.memory` trop basse | Non — remonter la limite |
+
+| Mesure | Valeur |
+|---|---|
+| Rolling update sous charge (663 req.) | 0 échec |
+| Rollback chronométré | 0.34s |
+| Plancher mémoire avant OOMKilled | 16-20Mi |
+| Valeur retenue (avec marge) | 32Mi / 64Mi |
+
+Le cluster `todo-cluster` (k3d) et le runner self-hosted doivent tous deux
+être en marche pour que `deploy-k8s` s'exécute — comme `vm-prod` au Jour 3,
+ce sont des ressources locales à cette machine, pas des services cloud.
