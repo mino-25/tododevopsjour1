@@ -4,7 +4,12 @@ metadata:
   name: todo-api
   namespace: todo
 spec:
-  replicas: 1
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: todo-api
@@ -15,7 +20,7 @@ spec:
     spec:
       containers:
         - name: todo-api
-          image: minoo25/todo-api:efd839267d2ee80ea9dbc736c81413ea5c2e905e
+          image: minoo25/todo-api:3a60e2a5c5bf716bc0685a2402868232038266d3
           ports:
             - containerPort: 3000
           envFrom:
@@ -23,6 +28,24 @@ spec:
                 name: todo-config
             - secretRef:
                 name: todo-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
 ---
 apiVersion: v1
 kind: Service
