@@ -1,6 +1,6 @@
 {
   "name": "todo-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Todo API dockerisée - projet fil rouge DevOps Jour 1",
   "main": "src/app.js",
   "scripts": {
