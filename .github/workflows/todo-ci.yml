@@ -1,0 +1,93 @@
+name: Todo API CI/CD
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  test-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: todo_user
+          POSTGRES_PASSWORD: todo_pass
+          POSTGRES_DB: todo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: todo_user
+      DB_PASSWORD: todo_pass
+      DB_NAME: todo_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:integration
+
+  build:
+    needs: [test, test-integration]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/jour3' || github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: echo "value=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USER }}/todo-api:${{ github.sha }}
+
+  deploy:
+    needs: [build]
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/jour3' || github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Envoyer compose.prod.yml sur la machine cible
+        run: |
+          scp -o StrictHostKeyChecking=accept-new -P "${{ secrets.DEPLOY_PORT }}" \
+            compose.prod.yml "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/srv/todo/compose.yml"
+      - name: Deployer la nouvelle version
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /srv/todo && DOCKERHUB_USER=${{ secrets.DOCKERHUB_USER }} TAG=${{ github.sha }} docker compose up -d"
+      - name: Verifier /health
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new -p "${{ secrets.DEPLOY_PORT }}" \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "for i in $(seq 1 15); do curl -sf http://localhost:3000/health && exit 0; sleep 2; done; exit 1"

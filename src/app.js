@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const taskRoutes = require('./routes/tasks');
 const errorHandler = require('./middleware/errorHandler');
 const { initSchema } = require('./db');
+const { register, metricsMiddleware } = require('./metrics');
 
 const REQUIRED_ENV_VARS = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
 for (const key of REQUIRED_ENV_VARS) {
@@ -18,9 +19,15 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
+});
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
 });
 
 app.use('/api/tasks', taskRoutes);
