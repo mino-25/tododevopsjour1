@@ -140,3 +140,60 @@ après ; boucle `curl` pour le temps de 1re réponse HTTP). Rien d'optimisé plu
 loin cette session : les deux images restent proches de leur poids de base
 (alpine / slim), la marge de gain restante viendrait surtout d'une réduction
 des dépendances plutôt que du Dockerfile lui-même.
+
+**Déploiement automatisé (chapitre Jour 3, Phases 1-4).** La pipeline
+déménage sur la Todo API : jobs `test` (unitaires) puis `build` (image taguée
+au sha, poussée sur Docker Hub) puis `deploy` (runner self-hosted, agent SSH,
+`docker compose up -d` sur la machine cible). La machine cible est une
+maquette fidèle : un conteneur `docker:28-dind` avec son propre daemon Docker
+et un serveur SSH (`Dockerfile.vm`), isolée du poste de développement —
+vérifié en constatant qu'un `docker ps` dedans ne montre aucun des conteneurs
+du poste. Connexion refusée sans la bonne clé, acceptée avec.
+
+**Idempotence et retour arrière (Phase 5).** Un redéploiement identique
+(même tag) laisse les quatre conteneurs `Running` sans recréation ni erreur.
+Une régression volontaire sur `/health` (500 au lieu de 200), déployée puis
+constatée, corrigée par un retour arrière vers le tag précédent : **11,19
+secondes** entre le constat et le rétablissement, sha à sha, sans rebuild.
+
+**Tests d'intégration (Phase 6).** Job `test-integration` avec un vrai
+Postgres en conteneur de service (`services: postgres`), healthcheck
+`pg_isready` avant de lancer les tests. Quatre cas couverts : création puis
+lecture, 404 sur id inexistant, 400 sur payload invalide, suppression puis
+disparition de la liste. Vérifiés en réel contre une base locale avant de
+faire confiance à la CI.
+
+**Prometheus et Grafana (Phases 7-8).** Instrumentation avec `prom-client` :
+`/metrics`, un counter de requêtes (labels method/route/status_code, jamais
+l'id de la tâche pour éviter l'explosion de cardinalité), un histogram de
+durée, et une métrique métier `todo_tasks_created_total`. Prometheus scrape
+`todo-api:3000` toutes les 5s ; Grafana provisionné automatiquement
+(datasource + dashboard JSON versionnés) avec 4 panneaux golden signals.
+Vérifié avec du vrai trafic : ~1,36 req/s, p95 à 48ms, compteur de tâches à
+15 après 15 créations — les trois requêtes PromQL retournent des valeurs
+cohérentes avec ce qui a été envoyé.
+
+**Incident réel (Phase 10).** `scripts/incident.sh` a tiré la panne n°2
+(`todo-db` stoppé). Signature observée : `/health` reste à 200 (il ne
+vérifie que le serveur HTTP), mais `GET /api/tasks` répond 500 — exactement
+la limite documentée dans `docs/PROCEDURE_DEPLOIEMENT.md`. Diagnostic posé
+via `docker ps -a` (todo-db `Exited`) avant même de lire les logs. Remède
+appliqué (`docker compose up -d todo-db`) : rétablissement en 0,60 seconde.
+
+## Journal de bord — Jour 3
+
+| Moment | up | Requêtes/s | Taux d'erreur | p95 |
+|---|---|---|---|---|
+| Au repos | 1 | ~0 | 0 % | ~5ms |
+| Pendant la boucle de charge (15 requêtes) | 1 | 1.36 | 33 % (1/3 des routes visait un id inexistant, volontairement) | 48ms |
+| Pendant l'incident (todo-db coupé) | 1 (le serveur répond) | - | 100 % sur les routes touchant la base | - |
+
+| Déploiement | Constat → rétablissement |
+|---|---|
+| Retour arrière (régression `/health`) | 11.19s |
+| Remède panne #2 (`todo-db` relancé) | 0.60s |
+
+Le runner self-hosted (`todo-local-runner`) tourne en tâche de fond sur la
+machine de développement (`~/actions-runner-todo/run.sh`), la machine cible
+`vm-prod` tourne en conteneur Docker persistant (volume `vm-prod-data`) :
+les deux doivent être en marche pour que le job `deploy` s'exécute.
