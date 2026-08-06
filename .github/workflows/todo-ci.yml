@@ -50,7 +50,7 @@ jobs:
   build:
     needs: [test, test-integration]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/jour3' || github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/jour3' || github.ref == 'refs/heads/jour4' || github.ref == 'refs/heads/main'
     outputs:
       image_tag: ${{ steps.tag.outputs.value }}
     steps:
